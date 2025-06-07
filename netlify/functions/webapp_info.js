@@ -1,5 +1,6 @@
 const axios = require('axios');
-const { getPreviewFromContent } = require('link-preview-js');
+const jsdom = require('jsdom');
+const { JSDOM } = jsdom;
 
 async function crawl(webapp_url) {
     if (!webapp_url) return null;
@@ -8,35 +9,52 @@ async function crawl(webapp_url) {
     }
     let webapp = {
         url: webapp_url,
-        icon: '/images/xp/icons/ApplicationWindow.png',
+        icon: '/res/icons/defaultapp.png',
         name: 'Untitled Program',
         desc: '',
         xframe_restricted: false
     };
     try {
-        let response = await axios.get(webapp_url);
-        response.url = response.config.url;
-        if (response.headers['x-frame-options'] != null) {
-            webapp.xframe_restricted = true;
+        const response = await axios.get(webapp_url);
+        webapp.xframe_restricted = response.headers['x-frame-options'] != null;
+        const dom = new JSDOM(response.data);
+        const doc = dom.window.document;
+        webapp.name = doc.querySelector('title')?.textContent.trim() || new URL(webapp_url).hostname;
+        webapp.desc = doc.querySelector('meta[name="description"]')?.content || '';
+        let iconUrl = null;
+        const appleIcon = doc.querySelector('link[rel="apple-touch-icon"]');
+        if (appleIcon && appleIcon.href) {
+            iconUrl = new URL(appleIcon.href, webapp_url).href;
+        } else {
+            const shortcutIcon = doc.querySelector('link[rel="shortcut icon"]');
+            if (shortcutIcon && shortcutIcon.href) {
+                iconUrl = new URL(shortcutIcon.href, webapp_url).href;
+            } else {
+                const genericIcon = doc.querySelector('link[rel="icon"]');
+                if (genericIcon && genericIcon.href) {
+                    iconUrl = new URL(genericIcon.href, webapp_url).href;
+                } else {
+                    iconUrl = new URL('/favicon.ico', webapp_url).href;
+                }
+            }
         }
-        let data = await getPreviewFromContent(response);
-        if (data.siteName && data.siteName.trim() !== '') {
-            webapp.name = data.siteName;
-        } else if (data.title && data.title.trim() !== '') {
-            webapp.name = data.title;
+        if (iconUrl) {
+            try {
+                const iconResponse = await axios.get(iconUrl, { responseType: 'arraybuffer' });
+                if (iconResponse.headers['content-type']?.startsWith('image/')) {
+                    webapp.icon = iconUrl;
+                }
+            } catch (e) {
+                console.error('Error fetching icon:', e.message);
+            }
         }
-        if (data.favicons && data.favicons.length >= 1) {
-            webapp.icon = data.favicons[data.favicons.length - 1];
-        }
-        webapp.desc = data.description || '';
     } catch (error) {
-        console.error('Error fetching webapp info:', error);
+        console.error('Error fetching webapp info:', error.message);
     }
     return webapp;
 }
 
 exports.handler = async function(event, context) {
-    // Handle CORS preflight requests
     if (event.httpMethod === 'OPTIONS') {
         return {
             statusCode: 204,
@@ -47,10 +65,7 @@ exports.handler = async function(event, context) {
             }
         };
     }
-
-    // Get webapp_url from headers
     let webapp_url = event.headers.webapp_url;
-
     if (!webapp_url) {
         return {
             statusCode: 400,
@@ -63,11 +78,8 @@ exports.handler = async function(event, context) {
             }
         };
     }
-
     console.log(webapp_url);
-
     let webapp = await crawl(webapp_url);
-
     return {
         statusCode: 200,
         body: JSON.stringify({ webapp }),
