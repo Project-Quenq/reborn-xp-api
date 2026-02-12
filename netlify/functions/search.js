@@ -27,11 +27,12 @@ exports.handler = async function(event, context) {
         const dom = new JSDOM(response.data);
         const doc = dom.window.document;
 
-        doc.querySelector('#b_header')?.remove();
-        doc.querySelector('#b_footer')?.remove();
-
         const head = doc.querySelector('head');
         if (head) {
+            const base = doc.createElement('base');
+            base.href = 'https://www.bing.com/';
+            head.prepend(base);
+
             const script = doc.createElement('script');
             script.innerHTML = `
                 document.addEventListener('DOMContentLoaded', () => {
@@ -45,7 +46,6 @@ exports.handler = async function(event, context) {
                             e.stopPropagation();
 
                             const originalUrl = link.href;
-
                             const originalText = link.innerHTML;
                             link.innerHTML += ' <i>(Checking...)</i>';
 
@@ -81,6 +81,9 @@ exports.handler = async function(event, context) {
             });
         }
 
+        doc.querySelector('#b_header')?.remove();
+        doc.querySelector('#b_footer')?.remove();
+
         return {
             statusCode: 200,
             body: dom.serialize(),
@@ -89,7 +92,7 @@ exports.handler = async function(event, context) {
     } catch (error) {
         return {
             statusCode: 500,
-            body: `Error fetching search results: ${error.message}`,
+            body: `Error: ${error.message}`,
             headers
         };
     }
