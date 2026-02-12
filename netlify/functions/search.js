@@ -7,18 +7,11 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 exports.handler = async function(event, context) {
     const headers = {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
         'Content-Type': 'text/html'
     };
 
-    if (event.httpMethod === 'OPTIONS') {
-        return { statusCode: 204, headers };
-    }
-
     const query = event.queryStringParameters.q;
-    if (!query) {
-        return { statusCode: 400, body: 'Search query "q" is required.', headers };
-    }
+    if (!query) return { statusCode: 400, body: 'Missing query', headers };
 
     try {
         const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
@@ -26,63 +19,61 @@ exports.handler = async function(event, context) {
 
         const dom = new JSDOM(response.data);
         const doc = dom.window.document;
+        const head = doc.head;
 
-        const head = doc.querySelector('head');
-        if (head) {
-            const base = doc.createElement('base');
-            base.href = 'https://www.bing.com/';
-            head.prepend(base);
+        const base = doc.createElement('base');
+        base.href = "https://www.bing.com/";
+        if (head.firstChild) head.insertBefore(base, head.firstChild);
+        else head.appendChild(base);
 
-            const script = doc.createElement('script');
-            script.innerHTML = `
-                document.addEventListener('DOMContentLoaded', () => {
-                    const API_ENDPOINT = 'https://rxpappinstaller.netlify.app/.netlify/functions/metadata';
+        const script = doc.createElement('script');
+        script.innerHTML = `
+            document.addEventListener('DOMContentLoaded', () => {
+                const METADATA_API = 'https://rxpappinstaller.netlify.app/.netlify/functions/metadata';
 
-                    document.body.addEventListener('click', async (e) => {
-                        const link = e.target.closest('a');
+                async function checkAndNavigate(url) {
+                    try {
+                        const resp = await fetch(METADATA_API, { headers: { 'target_url': url } });
+                        const data = await resp.json();
+                        const isRestricted = data.site && data.site.xframe_restricted;
+
+                        window.parent.postMessage({
+                            action: 'rebornxp_navigation_request',
+                            url: url,
+                            isRestricted: isRestricted
+                        }, '*');
+                    } catch (e) {
+                        window.parent.postMessage({
+                            action: 'rebornxp_navigation_request',
+                            url: url,
+                            isRestricted: true
+                        }, '*');
+                    }
+                }
+
+                document.body.addEventListener('click', (e) => {
+                    const link = e.target.closest('a');
+                    if (!link || !link.href) return;
+
+                    const isBingInternal = link.href.includes('bing.com') || link.getAttribute('href').startsWith('/');
+
+                    if (!isBingInternal && link.href.startsWith('http')) {
+                        e.preventDefault();
+                        e.stopPropagation();
                         
-                        if (link && link.href && link.href.startsWith('http') && link.target === '_blank') {
-                            e.preventDefault();
-                            e.stopPropagation();
-
-                            const originalUrl = link.href;
-                            const originalText = link.innerHTML;
-                            link.innerHTML += ' <i>(Checking...)</i>';
-
-                            try {
-                                const apiResponse = await fetch(API_ENDPOINT, { headers: { 'target_url': originalUrl } });
-                                const data = await apiResponse.json();
-                                
-                                const isRestricted = data.site && data.site.xframe_restricted;
-                                
-                                window.parent.postMessage({
-                                    action: 'rebornxp_navigation_request',
-                                    url: originalUrl,
-                                    isRestricted: isRestricted
-                                }, '*');
-
-                            } catch (err) {
-                                window.parent.postMessage({
-                                    action: 'rebornxp_navigation_request',
-                                    url: originalUrl,
-                                    isRestricted: true
-                                }, '*');
-                            } finally {
-                                link.innerHTML = originalText;
-                            }
-                        }
-                    });
+                        const originalText = link.innerText;
+                        link.innerText = 'Loading...';
+                        
+                        checkAndNavigate(link.href).finally(() => {
+                            link.innerText = originalText;
+                        });
+                    }
                 });
-            `;
-            head.appendChild(script);
 
-            doc.querySelectorAll('a[href^="http"]').forEach(a => {
-                a.target = '_blank';
+                document.querySelectorAll('a[target="_blank"]').forEach(a => a.removeAttribute('target'));
             });
-        }
-
-        doc.querySelector('#b_header')?.remove();
-        doc.querySelector('#b_footer')?.remove();
+        `;
+        doc.body.appendChild(script);
 
         return {
             statusCode: 200,
@@ -90,10 +81,6 @@ exports.handler = async function(event, context) {
             headers
         };
     } catch (error) {
-        return {
-            statusCode: 500,
-            body: `Error: ${error.message}`,
-            headers
-        };
+        return { statusCode: 500, body: 'Proxy Error', headers };
     }
 };
