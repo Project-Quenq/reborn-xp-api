@@ -10,12 +10,29 @@ exports.handler = async function(event, context) {
         'Content-Type': 'text/html'
     };
 
-    const query = event.queryStringParameters.q;
-    if (!query) return { statusCode: 400, body: 'Missing query', headers };
+    const q = event.queryStringParameters.q;
+    let targetUrl = event.queryStringParameters.url;
+
+    if (q) {
+        targetUrl = `https://search.aol.com/aol/search?q=${encodeURIComponent(q)}`;
+    } else if (!targetUrl) {
+        targetUrl = 'https://search.aol.com/';
+    }
 
     try {
-        const aolUrl = `https://search.aol.com/aol/search?q=${encodeURIComponent(query)}`;
-        const response = await axios.get(aolUrl, { headers: { 'User-Agent': USER_AGENT } });
+        const urlObj = new URL(targetUrl);
+        if (!urlObj.hostname.endsWith('aol.com')) {
+            return { statusCode: 403, body: 'Access Denied: This proxy only handles AOL Search.', headers };
+        }
+    } catch (e) {
+        return { statusCode: 400, body: 'Invalid URL', headers };
+    }
+
+    try {
+        const response = await axios.get(targetUrl, { 
+            headers: { 'User-Agent': USER_AGENT },
+            validateStatus: () => true 
+        });
 
         const dom = new JSDOM(response.data);
         const doc = dom.window.document;
@@ -30,38 +47,28 @@ exports.handler = async function(event, context) {
         script.innerHTML = `
             document.addEventListener('DOMContentLoaded', () => {
                 const METADATA_API = 'https://rxpappinstaller.netlify.app/.netlify/functions/metadata';
+                const PROXY_ENDPOINT = window.location.origin + window.location.pathname;
 
-                function getRealUrl(aolLink) {
-                    try {
-                        if (aolLink.includes('RU=')) {
-                            const match = aolLink.match(/RU=([^/&]+)/);
-                            if (match && match[1]) {
-                                return decodeURIComponent(match[1]);
-                            }
-                        }
-                    } catch(e) {}
-                    return aolLink;
-                }
+                window.parent.postMessage({
+                    action: 'rebornxp_address_update',
+                    url: '${targetUrl}'
+                }, '*');
 
-                async function checkAndNavigate(url) {
+                async function checkSecurityAndNavigate(url) {
                     try {
-                        const finalUrl = getRealUrl(url);
-                        
-                        const resp = await fetch(METADATA_API, { headers: { 'target_url': finalUrl } });
+                        const resp = await fetch(METADATA_API, { headers: { 'target_url': url } });
                         const data = await resp.json();
                         const isRestricted = data.site && data.site.xframe_restricted;
 
-                        const destinationUrl = data.site && data.site.final_url ? data.site.final_url : finalUrl;
-
                         window.parent.postMessage({
                             action: 'rebornxp_navigation_request',
-                            url: destinationUrl,
+                            url: url,
                             isRestricted: isRestricted
                         }, '*');
                     } catch (e) {
                         window.parent.postMessage({
                             action: 'rebornxp_navigation_request',
-                            url: getRealUrl(url),
+                            url: url,
                             isRestricted: true
                         }, '*');
                     }
@@ -72,25 +79,23 @@ exports.handler = async function(event, context) {
                     if (!link || !link.href) return;
 
                     const href = link.href;
+                    const isAolInternal = href.includes('search.aol.com') || href.includes('aol.com');
 
-                    if (href.includes('/aol/search') || href.includes('/aol/image') || href.includes('/aol/video')) {
-                        return;
-                    }
+                    e.preventDefault();
+                    e.stopPropagation();
 
-                    if (href.startsWith('http')) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        
+                    if (isAolInternal) {
+                        const newProxyUrl = PROXY_ENDPOINT + '?url=' + encodeURIComponent(href);
+                        window.location.href = newProxyUrl;
+                    } else {
                         const originalText = link.innerText;
                         link.innerText = 'Loading...';
                         
-                        checkAndNavigate(href).finally(() => {
+                        checkSecurityAndNavigate(href).finally(() => {
                             link.innerText = originalText;
                         });
                     }
                 });
-
-                document.querySelectorAll('a[target="_blank"]').forEach(a => a.removeAttribute('target'));
             });
         `;
         doc.body.appendChild(script);
@@ -101,6 +106,6 @@ exports.handler = async function(event, context) {
             headers
         };
     } catch (error) {
-        return { statusCode: 500, body: 'Proxy Error', headers };
+        return { statusCode: 500, body: 'Proxy Error: ' + error.message, headers };
     }
 };
