@@ -9,14 +9,24 @@ exports.handler = async function(event) {
 
         document.body.addEventListener('click', function(e) {
             const link = e.target.closest('a');
-            if (link && link.href) {
+            
+            if (!link) return;
+
+            if (e.defaultPrevented) return;
+
+            const hrefAttr = link.getAttribute('href');
+            if (!hrefAttr || hrefAttr.startsWith('#') || hrefAttr.startsWith('javascript:')) return;
+
+            if (link.href) {
                 e.preventDefault();
                 e.stopPropagation();
                 handleNav(new URL(link.href, window.location.href).href);
             }
-        }, true);
+        });
 
         document.body.addEventListener('submit', function(e) {
+            if (e.defaultPrevented) return;
+
             const form = e.target;
             e.preventDefault();
             e.stopPropagation();
@@ -31,7 +41,7 @@ exports.handler = async function(event) {
             actionUrl.search = params.toString();
             
             handleNav(actionUrl.href);
-        }, true);
+        });
     `;
 
     return {
