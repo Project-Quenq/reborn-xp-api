@@ -13,8 +13,6 @@ exports.handler = async function(event) {
     if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers };
 
     const targetUrl = event.queryStringParameters.url;
-    const siteOrigin = event.queryStringParameters.origin;
-
     if (!targetUrl) return { statusCode: 400, body: 'URL parameter is required.', headers };
 
     try {
@@ -39,81 +37,113 @@ exports.handler = async function(event) {
 
         const urlObj = new URL(targetUrl);
         const query = urlObj.searchParams.get('q') || '';
-        let mode = 'web'; 
-        if (targetUrl.includes('/image')) mode = 'images';
-        if (targetUrl.includes('/video')) mode = 'videos';
+        let currentType = 'web';
+        if (targetUrl.includes('/image')) currentType = 'images';
+        if (targetUrl.includes('/video')) currentType = 'videos';
 
         const base = doc.createElement('base');
         base.href = urlObj.origin;
         doc.head.prepend(base);
 
-        ['#sticky-hd', 'header', '#ft_wrapper', 'footer', '#ybar', '.mag-glass'].forEach(s => {
-            const el = doc.querySelector(s); if (el) el.remove();
+        ['#sticky-hd', 'header', '#ft_wrapper', 'footer', '.mag-glass', '#ybar', '#header'].forEach(s => {
+            const el = doc.querySelector(s);
+            if (el) el.remove();
         });
 
         const qooqleHeader = doc.createElement('div');
-        qooqleHeader.id = 'qooqle-injected-nav';
+        qooqleHeader.id = 'qooqle-results-navbar';
         qooqleHeader.innerHTML = `
             <style>
-                #qooqle-injected-nav {
-                    background-color: #fff;
-                    border-bottom: 1px solid #c0c0c0;
+                #qooqle-results-navbar {
+                    background: #eeeeee;
+                    border-bottom: 1px solid #808080;
                     padding: 8px 15px;
+                    font-family: "MS Gothic", monospace;
                     display: flex;
                     align-items: center;
-                    gap: 20px;
-                    font-family: "MS Gothic", monospace;
                     position: sticky;
                     top: 0;
-                    z-index: 10000;
+                    z-index: 9999999;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 }
-                #q-logo { cursor: pointer; width: 80px; height: auto; }
-                .q-form { display: flex; gap: 8px; align-items: center; }
-                
-                .q-input { 
-                    width: 320px; height: 22px; border: 2px solid; 
-                    border-top-color: #808080; border-left-color: #808080; 
-                    border-right-color: #d0d0d0; border-bottom-color: #d0d0d0; 
-                    box-shadow: inset 1px 1px #404040, inset -1px -1px #ffffff; 
-                    background-color: #ffffff; padding: 2px 5px; 
-                    font-family: "MS Gothic", monospace; font-size: 12px;
+                #q-logo {
+                    width: 70px;
+                    cursor: pointer;
+                    margin-right: 20px;
                 }
-                
+                .q-form-container {
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                }
+                .q-input {
+                    width: 350px;
+                    height: 22px;
+                    border: 2px solid;
+                    border-top-color: #808080;
+                    border-left-color: #808080;
+                    border-right-color: #d0d0d0;
+                    border-bottom-color: #d0d0d0;
+                    box-shadow: inset 1px 1px #404040, inset -1px -1px #ffffff;
+                    background-color: #ffffff;
+                    padding: 2px 5px;
+                    font-family: "MS Gothic", monospace;
+                    font-size: 12px;
+                    outline: none;
+                }
                 .q-btn {
-                    background-color: #c0c0c0; border: 2px solid; 
-                    border-top-color: #ffffff; border-left-color: #ffffff; 
-                    border-right-color: #808080; border-bottom-color: #808080; 
-                    padding: 2px 12px; font-family: "MS Gothic", monospace; 
-                    font-size: 12px; color: #000000; cursor: pointer; height: 28px;
+                    background-color: #c0c0c0;
+                    border: 2px solid;
+                    border-top-color: #ffffff;
+                    border-left-color: #ffffff;
+                    border-right-color: #808080;
+                    border-bottom-color: #808080;
+                    padding: 0 10px;
+                    height: 28px;
+                    font-family: "MS Gothic", monospace;
+                    font-size: 12px;
+                    color: #000;
+                    cursor: pointer;
+                    text-align: center;
+                    display: flex;
+                    align-items: center;
                 }
                 .q-btn:hover {
-                    border-top-color: #808080; border-left-color: #808080; 
-                    border-right-color: #ffffff; border-bottom-color: #ffffff; 
+                    border-top-color: #808080;
+                    border-left-color: #808080;
+                    border-right-color: #ffffff;
+                    border-bottom-color: #ffffff;
                     box-shadow: inset 1px 1px #404040, inset -1px -1px #ffffff;
                 }
-                .q-mode-label { font-size: 11px; color: #666; text-transform: uppercase; font-weight: bold;}
+                .mode-indicator {
+                    font-size: 10px;
+                    color: #666;
+                    margin-left: 10px;
+                    text-transform: uppercase;
+                }
             </style>
-
-            <img src="${siteOrigin}/res/sites/iexplore/logo.png" id="q-logo" title="Back to Home">
-            
-            <div class="q-form">
-                <span class="q-mode-label">${mode} search:</span>
-                <input type="text" id="q-input" class="q-input" value="${query}">
-                <button id="q-btn" class="q-btn">Search</button>
+            <img src="https://xp.quenq.com/res/sites/iexplore/logo.png" id="q-logo" alt="Qooqle">
+            <div class="q-form-container">
+                <input type="text" id="q-search-input" class="q-input" value="${query.replace(/"/g, '&quot;')}">
+                <button id="q-search-btn" class="q-btn">Search</button>
+                <span class="mode-indicator">Mode: ${currentType}</span>
             </div>
-
             <script>
                 (function() {
-                    const input = document.getElementById('q-input');
-                    const btn = document.getElementById('q-btn');
+                    const input = document.getElementById('q-search-input');
+                    const btn = document.getElementById('q-search-btn');
                     const logo = document.getElementById('q-logo');
+                    const currentType = "${currentType}";
 
                     const performSearch = () => {
-                        window.parent.postMessage({ 
-                            action: 'search', 
-                            query: input.value, 
-                            type: '${mode}'
-                        }, '*');
+                        const q = input.value.trim();
+                        if (q) {
+                            window.parent.postMessage({ 
+                                action: 'search', 
+                                query: q, 
+                                type: currentType 
+                            }, '*');
+                        }
                     };
 
                     btn.onclick = performSearch;
