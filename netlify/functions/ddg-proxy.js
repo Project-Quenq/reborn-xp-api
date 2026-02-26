@@ -42,6 +42,30 @@ exports.handler = async function(event) {
 
         doc.querySelectorAll('a[target="_blank"]').forEach(a => a.removeAttribute('target'));
 
+        doc.querySelectorAll('[crossorigin]').forEach(el => el.removeAttribute('crossorigin'));
+        doc.querySelectorAll('[integrity]').forEach(el => el.removeAttribute('integrity'));
+
+        const fixCorsScript = doc.createElement('script');
+        fixCorsScript.innerHTML = `
+            const originalCreateElement = document.createElement;
+            document.createElement = function(tagName, options) {
+                const el = originalCreateElement.call(document, tagName, options);
+                if (tagName.toLowerCase() === 'script') {
+                    const originalSetAttribute = el.setAttribute;
+                    el.setAttribute = function(name, value) {
+                        if (name.toLowerCase() === 'crossorigin' || name.toLowerCase() === 'integrity') return;
+                        originalSetAttribute.call(el, name, value);
+                    };
+                    Object.defineProperty(el, 'crossOrigin', {
+                        set: function() {},
+                        get: function() { return null; }
+                    });
+                }
+                return el;
+            };
+        `;
+        doc.head.prepend(fixCorsScript);
+
         const script = doc.createElement('script');
         script.src = `https://reborn-xp-api.netlify.app/.netlify/functions/interceptor`;
         doc.body.appendChild(script);
