@@ -37,15 +37,15 @@ exports.handler = async function(event) {
 
         const urlObj = new URL(targetUrl);
         const query = urlObj.searchParams.get('q') || '';
+        
         let currentType = 'web';
-        if (targetUrl.includes('/image')) currentType = 'images';
         if (targetUrl.includes('/video')) currentType = 'videos';
 
         const base = doc.createElement('base');
         base.href = urlObj.origin;
         doc.head.prepend(base);
 
-        ['#sticky-hd', 'header', '#ft_wrapper', 'footer', '.mag-glass', '#ybar', '#header'].forEach(s => {
+        ['#sticky-hd', 'header', '#ft_wrapper', 'footer', '.mag-glass', '#ybar', '#header', '#ys', '#topbar'].forEach(s => {
             const el = doc.querySelector(s);
             if (el) el.remove();
         });
@@ -150,7 +150,7 @@ exports.handler = async function(event) {
                         window.parent.postMessage({ action: 'navigate_to', url: 'about:home' }, '*');
                     };
                 })();
-            </script>
+            <\/script>
         `;
         doc.body.prepend(qooqleHeader);
 
