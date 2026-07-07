@@ -119,8 +119,13 @@ async function handleMetadata(request) {
 
 async function handleAolProxy(request) {
     const url = new URL(request.url);
-    const targetUrl = url.searchParams.get('url');
+    let targetUrl = url.searchParams.get('url');
     if (!targetUrl) return new Response('URL parameter is required.', { status: 400 });
+
+    // Swap search.aol.com/aol with search.yahoo.com
+    if (targetUrl.includes('search.aol.com/aol/')) {
+        targetUrl = targetUrl.replace('search.aol.com/aol/', 'search.yahoo.com/');
+    }
 
     const aolResponse = await fetch(targetUrl, { headers: { 'User-Agent': USER_AGENT } });
     const targetUrlObj = new URL(targetUrl);
